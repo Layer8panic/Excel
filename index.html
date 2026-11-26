@@ -551,6 +551,7 @@ body.demo #demobar{display:flex}body.demo #demoshield{display:block}
 #grid td.sp{padding:0}#grid td.sp svg{display:block}
 .fbtn{position:absolute;right:2px;bottom:2px;width:17px;height:17px;border:1px solid #bdbdbd;border-radius:2px;background:#fff;font-size:10px;line-height:14px;padding:0;color:#424242;z-index:3;cursor:pointer}.fbtn.on{color:#0f6cbd;border-color:#0f6cbd}.fbtn:hover{background:#e8f0fb}
 #selbox{position:absolute;border:2px solid var(--sel);pointer-events:none;z-index:4;box-sizing:border-box}
+#xsel i{position:absolute;border:1px solid var(--sel);background:rgba(16,124,65,.12);pointer-events:none;z-index:4;box-sizing:border-box}
 #selbox.multi{background:rgba(16,124,65,.10)}
 #selact{position:absolute;background:#fff;display:none;opacity:.0}
 #selbox.multi #selact{display:block;opacity:1;mix-blend-mode:normal;background:transparent;box-shadow:0 0 0 999px transparent}
@@ -1495,7 +1496,7 @@ function setSel(c, r, c2, r2, keepActive) {
   c = clamp(c, 0, NCOLS - 1); r = clamp(r, 0, NROWS - 1);
   if (c2 == null) { c2 = c; r2 = r; } c2 = clamp(c2, 0, NCOLS - 1); r2 = clamp(r2, 0, NROWS - 1);
   const g = normSel({ r1: Math.min(r, r2), c1: Math.min(c, c2), r2: Math.max(r, r2), c2: Math.max(c, c2) });
-  S.sel = { c: keepActive ? S.sel.c : c, r: keepActive ? S.sel.r : r, g, anchor: { c, r } };
+  S.sel = { c: keepActive ? S.sel.c : c, r: keepActive ? S.sel.r : r, g, anchor: { c, r }, extra: S.keepExtra || [] };
   if (S.painter && !S.painter.picking) { applyPainter(); }
   S.chartSel = null; drawSel(); scrollIntoView(c2, r2); emit('selection'); updateUI();
 }
@@ -1509,6 +1510,7 @@ function drawSel() {
   $$('th.ch').forEach(th => { const c = +th.dataset.c; th.classList.toggle('on', c >= g.c1 && c <= g.c2); th.classList.toggle('full', g.r1 === 0 && g.r2 === NROWS - 1 && c >= g.c1 && c <= g.c2); });
   $$('th.rh').forEach(th => { const r = +th.dataset.r; th.classList.toggle('on', r >= g.r1 && r <= g.r2); th.classList.toggle('full', g.c1 === 0 && g.c2 === NCOLS - 1 && r >= g.r1 && r <= g.r2); });
   if (!S.edit) { $('#namebox').value = A1(S.sel.c, S.sel.r); const cell = getCell(SH(), A1(S.sel.c, S.sel.r)); $('#fx').value = cell ? fxText(cell) : ''; }
+  const xs = $('#xsel'); if (xs) { xs.innerHTML = ''; if (!S.chartSel) (S.sel.extra || []).forEach(x => { const Rx = rangeRect(x); xs.append(h('i', { style: `left:${Rx.x - 1}px;top:${Rx.y - 1}px;width:${Rx.w + 1}px;height:${Rx.h + 1}px` })); }); }
   drawClip(); drawValidBtn(); updateStatus();
 }
 function fxText(cell) { const raw = String(cell.v == null ? '' : cell.v); if (raw[0] === '=') return raw; const st = cell.s || {}; const p = parseInput(raw); if (typeof p.v === 'number') { if (st.nf === 'date' || p.nf === 'date') return fmtValue(p.v, { nf: 'date' }); if (st.nf === 'pct' || p.nf === 'pct') return fmtGeneral(p.v * 100) + '%'; return fmtGeneral(p.v); } return raw; }
@@ -2003,7 +2005,7 @@ const CMD = {
   clearFilter() { const sh = SH(); if (sh.filter) sh.filter.crit = {}; },
   replaceAll(a) { const sh = SH(); let n = 0; const re = new RegExp(a.find.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), a.cs ? 'g' : 'gi'); for (const k in sh.cells) { const cell = sh.cells[k]; const raw = String(cell.v || ''); if (!raw) continue; if (a.whole ? (a.cs ? raw === a.find : raw.toLowerCase() === a.find.toLowerCase()) : re.test(raw)) { re.lastIndex = 0; const m = raw.match(re); n += a.whole ? 1 : (m ? m.length : 0); cell.v = a.whole ? a.rep : raw.replace(re, a.rep); delete cell._ast; } re.lastIndex = 0; } S.lastReplace = n; return n; },
   /* inserisci */
-  chart(type) { const sh = SH(); let g = S.sel.g; if (g.r1 === g.r2 && g.c1 === g.c2) g = currentRegion(S.sel.c, S.sel.r); if (g.r1 === g.r2 && g.c1 === g.c2) return toast('Seleziona i dati da rappresentare nel grafico (con le intestazioni).'); const id = 'g' + Date.now().toString(36); const x = G.colX[Math.min(NCOLS - 1, g.c2 + 2)], y = G.rowY[g.r1]; sh.charts.push({ id, type, range: rangeStr(g), sheet: sh.name, x, y, w: 460, h: 280, legend: type === 'pie' || true, labels: false }); S.chartSel = id; },
+  chart(type) { const sh = SH(); let g = S.sel.g; const xs = S.sel.extra || []; let parts; if (xs.length) { parts = [...xs, g].filter((x, i, a) => a.findIndex(y => rangeStr(y) === rangeStr(x)) === i).sort((a, b) => a.c1 - b.c1); if (parts.some(x => x.r1 !== parts[0].r1 || x.r2 !== parts[0].r2)) return toast('Gli intervalli selezionati con Ctrl devono avere le stesse righe (es. A3:A7 e D3:D7).'); } else { if (g.r1 === g.r2 && g.c1 === g.c2) g = currentRegion(S.sel.c, S.sel.r); if (g.r1 === g.r2 && g.c1 === g.c2) return toast('Seleziona i dati da rappresentare nel grafico (con le intestazioni).'); parts = [g]; } const c2 = Math.max(...parts.map(x => x.c2)); const id = 'g' + Date.now().toString(36); const x = G.colX[Math.min(NCOLS - 1, c2 + 2)], y = G.rowY[parts[0].r1]; sh.charts.push({ id, type, range: parts.map(rangeStr).join(';'), sheet: sh.name, x, y, w: 460, h: 280, legend: true, labels: false }); S.sel.extra = []; S.chartSel = id; setTimeout(() => { if (S.chartSel === id && !(typeof DEMO !== 'undefined' && DEMO.on)) switchTab('chart', false); }, 0); },
   chartType(t) { const ch = curChart(); if (ch) ch.type = t; },
   chartTitle(t) { const ch = curChart(); if (ch) ch.title = t; },
   chartLegend() { const ch = curChart(); if (ch) ch.legend = ch.legend === false; },
@@ -2532,7 +2534,7 @@ function bindGrid() {
     if (S.edit) return;
     closePopups(); gridFocus();
     if (e.shiftKey) { setSel(S.sel.anchor ? S.sel.anchor.c : S.sel.c, S.sel.anchor ? S.sel.anchor.r : S.sel.r, p.c, p.r); S.sel.c = S.sel.anchor ? S.sel.anchor.c : S.sel.c; drawSel(); return; }
-    setSel(p.c, p.r); const a = { ...p };
+    if ((e.ctrlKey || e.metaKey) && !S.painter) { const prev = S.sel.g; S.keepExtra = [...(S.sel.extra || []).filter(x => rangeStr(x) !== rangeStr(prev)), prev]; setSel(p.c, p.r); S.keepExtra = null; } else setSel(p.c, p.r); const a = { ...p };
     const mm = ev => { const q = cellFromPoint(ev.clientX, ev.clientY); const g = normSel({ r1: Math.min(a.r, q.r), c1: Math.min(a.c, q.c), r2: Math.max(a.r, q.r), c2: Math.max(a.c, q.c) }); if (g.r1 !== S.sel.g.r1 || g.r2 !== S.sel.g.r2 || g.c1 !== S.sel.g.c1 || g.c2 !== S.sel.g.c2) { S.sel.g = g; drawSel(); $('#namebox').value = `${g.r2 - g.r1 + 1}R x ${g.c2 - g.c1 + 1}C`; } };
     const mu = () => { document.removeEventListener('mousemove', mm); document.removeEventListener('mouseup', mu); if (S.painter) applyPainter(); drawSel(); emit('selection'); updateUI(); };
     document.addEventListener('mousemove', mm); document.addEventListener('mouseup', mu);
@@ -2650,7 +2652,7 @@ function bindFormulaBar() {
 function buildApp() {
   document.body.innerHTML = `<div id="app"><header id="title"></header><nav id="tabs"></nav><div id="ribbon"></div>
   <div id="fbar"><div id="nbwrap"><input id="namebox" data-id="namebox" spellcheck="false" aria-label="Casella Nome" data-tip="Casella Nome|Mostra il riferimento della cella attiva. Scrivi qui un riferimento per spostarti o un nome per assegnarlo alle celle selezionate."><button id="nbdd" tabindex="-1"></button></div><div class="fbtns"><button id="fxX" title="Annulla">✕</button><button id="fxOk" title="Invio">✓</button><button id="fxBtn" data-id="fxBtn" data-tip="Inserisci funzione|Maiusc+F3"><i>fx</i></button></div><input id="fx" data-id="fx" spellcheck="false" autocomplete="off" aria-label="Barra della formula"></div>
-  <div id="main"><section id="center"><div id="gridwrap"><div id="gridin"><table id="grid"></table><div id="refboxes"></div><div id="selbox"><i id="selact"></i><i id="fillh" data-id="fillh"></i></div><div id="fillbox"></div><div id="copyant"></div><div id="frzH" class="frz"></div><div id="frzV" class="frz"></div><div id="rszline"></div><div id="objs"></div><textarea id="celledit" spellcheck="false" wrap="off"></textarea><button id="vbtn" tabindex="-1">▾</button></div></div></section><aside id="sidepane"></aside><aside id="coach"></aside><button id="coachOpen" title="Apri Excel Academy"></button></div>
+  <div id="main"><section id="center"><div id="gridwrap"><div id="gridin"><table id="grid"></table><div id="refboxes"></div><div id="selbox"><i id="selact"></i><i id="fillh" data-id="fillh"></i></div><div id="xsel"></div><div id="fillbox"></div><div id="copyant"></div><div id="frzH" class="frz"></div><div id="frzV" class="frz"></div><div id="rszline"></div><div id="objs"></div><textarea id="celledit" spellcheck="false" wrap="off"></textarea><button id="vbtn" tabindex="-1">▾</button></div></div></section><aside id="sidepane"></aside><aside id="coach"></aside><button id="coachOpen" title="Apri Excel Academy"></button></div>
   <div id="sheetbar"><div class="snav"><button title="Foglio precedente" onclick="switchSheet(Math.max(0,WB.active-1))">◀</button><button title="Foglio successivo" onclick="switchSheet(Math.min(WB.sheets.length-1,WB.active+1))">▶</button></div><div id="sheettabs"></div><button id="addSheet" data-id="addSheet" data-tip="Nuovo foglio|Maiusc+F11|Inserisce un nuovo foglio di lavoro.">+</button><div class="sbfill"></div></div>
   <footer id="status"></footer></div><input id="kbtrap" aria-hidden="true"><div id="backstage"></div><div id="modal"></div><div id="tip"></div><div id="notetip"></div><div id="toasts"></div><div id="ctxmenu"></div><div id="acpop"></div><div id="fnhint"></div><canvas id="confetti"></canvas>`;
   $('#addSheet').onclick = () => run('addSheet');
@@ -2693,7 +2695,7 @@ const Q = {
   set(ref, text) { const { sh, a } = splitRef(ref); const p = parseA1(a); const i = WB.sheets.indexOf(sh); if (S.edit) cancelEdit(); const ok = commitTo(i, p.c, p.r, text); renderValues(); drawSel(); return ok; },
   sheet: n => n ? sheetBy(n) : SH(), sheets: () => WB.sheets.map(s => s.name),
   cw: (col, sh) => colW(sh ? sheetBy(sh) : homeSheet(), colIndex(col)), rh: (row, sh) => rowH(sh ? sheetBy(sh) : homeSheet(), row - 1),
-  chart: () => homeSheet().charts[0], tab: () => S.tab
+  charts: () => homeSheet().charts, chart: () => { const cs = homeSheet().charts; return cs.find(c => c.id === S.chartSel) || cs[cs.length - 1]; }, tab: () => S.tab
 };
 const QD = Q;
 
@@ -3096,7 +3098,7 @@ L(3, 'Trova e sostituisci', '<b>Trova e seleziona › Sostituisci</b> (gruppo Mo
 L(4, 'Il primo grafico', 'Un <b>grafico</b> rende i numeri immediati. Seleziona i dati <b>con le intestazioni</b> e scegli un tipo dalla scheda <b>Inserisci</b>: l\'istogramma confronta valori, le linee mostrano un andamento, la torta le proporzioni. Il grafico resta collegato ai dati.',
   { title: 'Visite al sito', data: grid([['Mese', 'Visite'], ['Gennaio', '1250'], ['Febbraio', '1480'], ['Marzo', '1720'], ['Aprile', '1610'], ['Maggio', '2050'], ['Giugno', '2380']]), st: { 'A1:B1': HEAD } }, [
   selStep('A1:B7', { text: 'Seleziona i dati <b>A1:B7</b>, intestazioni comprese.' }),
-  { text: 'Inserisci › <b>Istogramma</b> › <b>Istogramma a colonne raggruppate</b>.', path: ['tab:insert', 'colChart', 'ch-col'], done: Q => { const ch = Q.chart(); return !!ch && ch.type === 'col' && ch.range === 'A1:B7'; }, hints: ['Nel gruppo Grafici della scheda Inserisci, il primo pulsantino ha le colonne blu.'], solve: Q => { Q.select('A1:B7'); run('chart', 'col'); }, ok: 'Ecco il grafico: il titolo è preso dall\'intestazione «Visite».' },
+  { text: 'Inserisci › <b>Istogramma</b> › <b>Istogramma a colonne raggruppate</b>.', path: ['tab:insert', 'colChart', 'ch-col'], done: Q => Q.charts().some(ch => ch.type === 'col' && ch.range === 'A1:B7'), hints: ['Nel gruppo Grafici della scheda Inserisci, il primo pulsantino ha le colonne blu.'], solve: Q => { Q.select('A1:B7'); run('chart', 'col'); }, ok: 'Ecco il grafico: il titolo è preso dall\'intestazione «Visite».' },
   { text: 'Prova il collegamento: cambia le visite di <b>giugno</b> (B7) in <b>3000</b> e guarda la colonna crescere.', path: ['cell:B7'], done: Q => Q.n('B7') === 3000, hints: ['Clicca B7, scrivi 3000 e premi Invio.'], solve: Q => Q.set('B7', '3000'), ok: 'Il grafico si aggiorna da solo.' }
 ], { cells: ['B7'], cmds: ['chart'] });
 
@@ -3117,13 +3119,13 @@ L(4, 'Salva con nome (.xlsx)', '<b>Salva con nome</b> (<kbd>F12</kbd> o File ›
 
 /* ======================= MODULO 6 · PROGETTO FINALE ======================= */
 L(5, 'Progetto finale: il budget della vacanza', 'Metti insieme tutto quello che hai imparato. Completa i <b>6 requisiti</b> nell\'ordine che preferisci: chiedi un suggerimento solo se serve.',
-  { title: 'Vacanza', data: Object.assign({ A1: 'Budget vacanza in Sardegna' }, grid([['Voce', 'Persone', 'Costo a persona', 'Totale'], ['Traghetto', '4', '85', ''], ['Appartamento', '4', '210', ''], ['Noleggio auto', '4', '60', ''], ['Escursioni', '4', '45', ''], ['Totale vacanza', '', '', '']], 'A3')), colW: { A: 140, C: 120 } }, [
+  { title: 'Vacanza', data: Object.assign({ A1: 'Budget vacanza in Sardegna' }, grid([['Voce', 'Persone', 'Costo a persona', 'Totale'], ['Traghetto', '4', '85', ''], ['Appartamento', '4', '210', ''], ['Noleggio auto', '4', '60', ''], ['Escursioni', '4', '45', ''], ['Totale vacanza', '', '', '']], 'A3')), colW: { A: 140, C: 120, D: 110 } }, [
   { text: 'Il titolo in <b>A1</b> è <b>unito e centrato</b> su A1:D1, in grassetto.', done: Q => Q.sheet().merges.some(m => rangeStr(m) === 'A1:D1') && Q.st('A1').b, hints: ['Seleziona A1:D1, Unisci e allinea al centro e G.'], solve: Q => { Q.select('A1:D1'); run('merge', 'center'); run('bold'); } },
   { text: 'Le intestazioni <b>A3:D3</b> hanno un <b>colore di riempimento</b> e il grassetto.', done: Q => Q.all('A3:D3', k => Q.st(k).fill && Q.st(k).b), hints: ['Seleziona A3:D3, secchiello e G.'], solve: Q => { Q.select('A3:D3'); run('fill', '#c0e4f5'); run('bold'); } },
   { text: 'In <b>D4:D7</b> c\'è la formula Persone × Costo a persona (es. =B4*C4).', done: Q => [4, 5, 6, 7].every(r => Q.isF('D' + r) && Q.n('D' + r) === Q.n('B' + r) * Q.n('C' + r)), hints: ['Scrivi =B4*C4 in D4 e trascina il quadratino fino a D7.'], solve: Q => { Q.set('D4', '=B4*C4'); doFill({ r1: 3, c1: 3, r2: 3, c2: 3 }, { r1: 3, c1: 3, r2: 6, c2: 3 }); } },
   { text: 'In <b>D8</b> c\'è il totale con la funzione <b>SOMMA</b>.', done: fOK('D8', ['SOMMA(D4:D7)'], 1600), hints: ['Clic su D8 e Somma automatica.'], solve: Q => Q.set('D8', '=SOMMA(D4:D7)') },
   { text: 'Gli importi <b>C4:D8</b> sono in formato <b>Valuta</b>.', done: Q => Q.all('C4:D7', k => ['eur', 'acc'].includes(Q.st(k).nf)) && ['eur', 'acc'].includes(Q.st('D8').nf), hints: ['Seleziona C4:D8 e scegli Valuta dal gruppo Numeri.'], solve: Q => { Q.select('C4:D8'); run('nf', 'eur'); } },
-  { text: 'C\'è un <b>grafico a torta</b> dei totali per voce: dati <b>A3:A7;D3:D7</b> (voci e totali).', done: Q => { const ch = Q.chart(); return !!ch && ch.type === 'pie' && /D/.test(ch.range) && /^A3:A7|^A4:A7/.test(ch.range) && !/B|C/.test(ch.range.split(';').slice(1).join()); }, hints: ['Seleziona A3:D7 e scegli Inserisci › Torta.', 'Poi nella scheda Struttura grafico › Seleziona dati scrivi A3:A7;D3:D7 (le voci e la colonna dei totali).'], solve: Q => { Q.select('A3:D7'); run('chart', 'pie'); run('chartData', 'A3:A7;D3:D7'); } }
+  { text: 'C\'è un <b>grafico a torta</b> dei totali per voce: dati <b>A3:A7</b> e <b>D3:D7</b> (voci e totali).', done: Q => Q.charts().some(ch => ch.type === 'pie' && /^(A3:A7|A4:A7);(D3:D7|D4:D7)$/.test(ch.range)), hints: ['Seleziona A3:A7, tieni premuto <kbd>Ctrl</kbd> e seleziona anche D3:D7. Poi Inserisci › Torta.', 'Se il grafico è già fatto ma con i dati sbagliati: fai clic sul grafico, scheda Struttura grafico › Seleziona dati e scrivi A3:A7;D3:D7. Oppure eliminalo (Canc) e rifallo.'], onCmd: (ev, Q) => { if (!['chart', 'chartData', 'chartType'].includes(ev.name)) return null; const ch = Q.chart(); if (!ch || /^(A3:A7|A4:A7);(D3:D7|D4:D7)$/.test(ch.range) && ch.type === 'pie') return null; if (ch.type !== 'pie') return 'Questo non è un grafico a torta: scheda Struttura grafico › Cambia tipo di grafico › Torta.'; return `Il grafico usa i dati <b>${esc(ch.range)}</b>: servono solo le voci (A3:A7) e i totali (D3:D7). Con il grafico selezionato vai su Struttura grafico › <b>Seleziona dati</b> e scrivi A3:A7;D3:D7.`; }, solve: Q => { Q.select('A3:A7'); S.keepExtra = [parseRange('A3:A7')]; setSel(3, 2, 3, 6); S.keepExtra = null; run('chart', 'pie'); } }
 ], { order: 'any', free: true });
 
 startAcademy();
