@@ -1809,8 +1809,10 @@ function chartData(ch) {
   const V = (c, r) => cellValue(sh, c, r); const F = (c, r) => fmtValue(V(c, r), (getCell(sh, A1(c, r)) || {}).s);
   const last = cols[cols.length - 1]; const hasHead = typeof V(last, g.r1) === 'string' || (V(last, g.r1) == null && g.r2 > g.r1);
   const hasCat = cols.length > 1 && [...Array(g.r2 - g.r1 + 1).keys()].some(i => typeof V(cols[0], g.r1 + i) === 'string' && (i > 0 || !hasHead));
-  const r0 = hasHead ? g.r1 + 1 : g.r1; const dataCols = hasCat ? cols.slice(1) : cols;
-  const cats = []; for (let r = r0; r <= g.r2; r++) { if (sh._fhid && sh._fhid[r]) continue; cats.push(hasCat ? F(cols[0], r) : String(r - r0 + 1)); }
+  const catLike = () => { const vs = []; for (let r = hasHead ? g.r1 + 1 : g.r1; r <= g.r2; r++) vs.push(r); return vs.length > 0 && vs.every(r => { const v = V(cols[0], r), nf = ((getCell(sh, A1(cols[0], r)) || {}).s || {}).nf; return v == null || nf === 'date' || (Number.isInteger(v) && v >= 1900 && v <= 2100); }) && vs.some(r => V(cols[0], r) != null); };
+  const hasCat2 = hasCat || (cols.length > 1 && hasHead && catLike());
+  const r0 = hasHead ? g.r1 + 1 : g.r1; const dataCols = hasCat2 ? cols.slice(1) : cols;
+  const cats = []; for (let r = r0; r <= g.r2; r++) { if (sh._fhid && sh._fhid[r]) continue; cats.push(hasCat2 ? F(cols[0], r) : String(r - r0 + 1)); }
   const series = dataCols.map((c, k) => { const vals = []; for (let r = r0; r <= g.r2; r++) { if (sh._fhid && sh._fhid[r]) continue; const v = V(c, r); vals.push(typeof v === 'number' ? v : 0); } return { name: hasHead ? F(c, g.r1) : 'Serie' + (k + 1), vals }; });
   return { cats, series, nfs: (getCell(sh, A1(dataCols[0], r0)) || {}).s };
 }
@@ -1828,11 +1830,11 @@ function chartSVG(ch) {
     return s + '</svg>';
   }
   const all = d.series.flatMap(x => x.vals); const ticks = niceTicks(Math.min(0, ...all), Math.max(0, ...all)); const lo = ticks[0], hi = ticks[ticks.length - 1];
-  const horiz = ch.type === 'bar'; const axW = 46; const L = horiz ? 90 : axW + 8, R = W - 16, T = topY + 4, B = H - legH - 26;
+  const horiz = ch.type === 'bar'; const axW = 46; const maxC = Math.max(4, ...d.cats.map(x => String(x).length)); const hL = Math.min(Math.round(W * .42), Math.max(60, Math.round(maxC * 6.4) + 14)); const hMax = Math.max(4, Math.floor((hL - 10) / 6.4)); const L = horiz ? hL : axW + 8, R = W - 16, T = topY + 4, B = H - legH - 26;
   const sc = v => horiz ? L + (v - lo) / (hi - lo) * (R - L) : B - (v - lo) / (hi - lo) * (B - T);
   ticks.forEach(t => { if (horiz) s += `<line x1="${sc(t)}" y1="${T}" x2="${sc(t)}" y2="${B}" stroke="#d9d9d9"/><text x="${sc(t)}" y="${B + 16}" text-anchor="middle" font-size="11" fill="#595959">${esc(fmt(t))}</text>`; else s += `<line x1="${L}" y1="${sc(t)}" x2="${R}" y2="${sc(t)}" stroke="#d9d9d9"/><text x="${L - 6}" y="${sc(t) + 4}" text-anchor="end" font-size="11" fill="#595959">${esc(fmt(t))}</text>`; });
   const n = d.cats.length || 1, ns = d.series.length || 1; const band = horiz ? (B - T) / n : (R - L) / n;
-  d.cats.forEach((cname, i) => { const mid = (horiz ? T : L) + band * (i + .5); s += horiz ? `<text x="${L - 6}" y="${mid + 4}" text-anchor="end" font-size="11" fill="#595959">${esc(String(cname).slice(0, 14))}</text>` : `<text x="${mid}" y="${B + 16}" text-anchor="middle" font-size="11" fill="#595959">${esc(String(cname).slice(0, Math.max(4, Math.floor(band / 6.5))))}</text>`; });
+  d.cats.forEach((cname, i) => { const mid = (horiz ? T : L) + band * (i + .5); s += horiz ? `<text x="${L - 6}" y="${mid + 4}" text-anchor="end" font-size="11" fill="#595959">${esc(String(cname).length > hMax ? String(cname).slice(0, hMax - 1) + '…' : String(cname))}</text>` : `<text x="${mid}" y="${B + 16}" text-anchor="middle" font-size="11" fill="#595959">${esc(String(cname).slice(0, Math.max(4, Math.floor(band / 6.5))))}</text>`; });
   if (ch.type === 'line') {
     d.series.forEach((se, k) => { const pts = se.vals.map((v, i) => `${L + band * (i + .5)},${sc(v)}`); s += `<polyline points="${pts.join(' ')}" fill="none" stroke="${pal(k)}" stroke-width="2.5" stroke-linejoin="round"/>`; se.vals.forEach((v, i) => { s += `<circle cx="${L + band * (i + .5)}" cy="${sc(v)}" r="3.5" fill="${pal(k)}"/>`; if (ch.labels) s += `<text x="${L + band * (i + .5)}" y="${sc(v) - 8}" text-anchor="middle" font-size="11" fill="#404040">${esc(fmt(v))}</text>`; }); });
   } else {
