@@ -545,7 +545,7 @@ body.demo #demobar{display:flex}body.demo #demoshield{display:block}
 #gridin.nogrid #grid td{border-color:transparent}
 #grid td .cv{overflow:hidden;text-overflow:clip;white-space:pre;padding:1px 0}
 #grid td .cv.wrap{white-space:pre-wrap;word-break:break-word}
-#grid td.txt-ovf{overflow:visible;z-index:1}#grid td.txt-ovf .cv{position:relative;z-index:2}
+#grid td.txt-ovf{overflow:visible;z-index:1}#grid td.txt-ovf .cv{position:relative;z-index:2;pointer-events:none}
 #grid td .cv.err{color:inherit}
 #grid td.has-note::after{content:"";position:absolute;right:0;top:0;border:4px solid transparent;border-right-color:#c00000;border-top-color:#c00000}
 #grid td.sp{padding:0}#grid td.sp svg{display:block}
@@ -652,7 +652,7 @@ function parseColor(c) {
 }
 const isRed = c => { const p = parseColor(c); return !!p && p[0] >= 170 && p[1] <= 90 && p[2] <= 90; };
 const isYellow = c => { const p = parseColor(c); return !!p && p[0] >= 200 && p[1] >= 200 && p[2] <= 120; };
-const isBlue = c => { const p = parseColor(c); return !!p && p[2] >= 150 && p[0] <= 110; };
+const isBlue = c => { const p = parseColor(c); return !!p && p[2] >= 90 && p[2] > p[0] + 40 && p[2] > p[1] + 20; };
 function colorName(c) {
   const p = parseColor(c); if (!p) return 'sconosciuto';
   const [r, g, b] = p;
@@ -1700,7 +1700,9 @@ function copySel(cut) {
 function pasteAt(mode = 'all') {
   const sh = SH(); const cl = S.clip; if (!cl) return toast('Gli Appunti sono vuoti: prima copia (Ctrl+C) o taglia (Ctrl+X) delle celle.');
   if (sh.protect) { protectMsg(); return; }
-  const rows = cl.cells.length, cols = cl.cells[0].length; const t = { c: S.sel.g.c1, r: S.sel.g.r1 };
+  const rows = cl.cells.length, cols = cl.cells[0].length; const dg = S.sel.g; const nR = dg.r2 - dg.r1 + 1, nC = dg.c2 - dg.c1 + 1;
+  if (!cl.cut && mode !== 'transpose' && (nR > rows || nC > cols) && nR % rows === 0 && nC % cols === 0) { const keep = { ...dg }; for (let i = 0; i < nR / rows; i++) for (let j = 0; j < nC / cols; j++) { S.sel.g = { r1: keep.r1 + i * rows, c1: keep.c1 + j * cols, r2: keep.r1 + i * rows, c2: keep.c1 + j * cols }; pasteAt(mode); } S.sel.g = keep; drawSel(); return; }
+  const t = { c: S.sel.g.c1, r: S.sel.g.r1 };
   const dr = t.r - cl.g.r1, dc = t.c - cl.g.c1; const src = WB.sheets[cl.sheet];
   if (cl.cut) { eachCell(cl.g, (c, r) => { delete src.cells[A1(c, r)]; }); }
   const trans = mode === 'transpose';
@@ -1852,7 +1854,7 @@ function renderObjects() {
   sh.charts.forEach(ch => {
     const d = h('div', { class: 'chart' + (S.chartSel === ch.id ? ' sel' : ''), 'data-id': 'chart-' + ch.id, style: `left:${ch.x}px;top:${ch.y}px;width:${ch.w}px;height:${ch.h}px`, html: chartSVG(ch) });
     if (S.chartSel === ch.id) ['nw', 'ne', 'sw', 'se'].forEach(k => d.append(h('i', { class: 'hd ' + k })));
-    d.addEventListener('mousedown', e => { e.stopPropagation(); e.preventDefault(); if (S.edit) commitEdit(0, 0); selectChart(ch.id); const hd = e.target.classList.contains('hd') ? e.target.className.split(' ')[1] : null; const sx = e.clientX, sy = e.clientY, o = { ...ch }; let movedC = false; const mm = ev => { const dx = (ev.clientX - sx) / S.zoom, dy = (ev.clientY - sy) / S.zoom; if (Math.abs(dx) + Math.abs(dy) > 2) movedC = true; if (hd) { if (hd.includes('e')) ch.w = Math.max(160, o.w + dx); if (hd.includes('s')) ch.h = Math.max(120, o.h + dy); if (hd.includes('w')) { ch.w = Math.max(160, o.w - dx); ch.x = o.x + o.w - ch.w; } if (hd.includes('n')) { ch.h = Math.max(120, o.h - dy); ch.y = o.y + o.h - ch.h; } } else { ch.x = Math.max(RH_W, o.x + dx); ch.y = Math.max(HDR_H, o.y + dy); } d.style.left = ch.x + 'px'; d.style.top = ch.y + 'px'; d.style.width = ch.w + 'px'; d.style.height = ch.h + 'px'; if (hd) d.innerHTML = chartSVG(ch); }; const mu = () => { document.removeEventListener('mousemove', mm); document.removeEventListener('mouseup', mu); if (movedC) { histPush(); renderObjects(); emit('cmd', { name: 'chartMove' }); } }; document.addEventListener('mousemove', mm); document.addEventListener('mouseup', mu); });
+    d.addEventListener('mousedown', e => { e.stopPropagation(); e.preventDefault(); if (S.edit) commitEdit(0, 0); const onT = !!e.target.closest('.ctitle'), now = Date.now(), lt = S._ctDown; S._ctDown = onT ? { id: ch.id, t: now } : null; if (onT && lt && lt.id === ch.id && now - lt.t < 500) { S._ctDown = null; selectChart(ch.id); run('chartTitleDlg'); return; } selectChart(ch.id); const hd = e.target.classList.contains('hd') ? e.target.className.split(' ')[1] : null; const sx = e.clientX, sy = e.clientY, o = { ...ch }; let movedC = false; const mm = ev => { const dx = (ev.clientX - sx) / S.zoom, dy = (ev.clientY - sy) / S.zoom; if (Math.abs(dx) + Math.abs(dy) > 2) movedC = true; if (hd) { if (hd.includes('e')) ch.w = Math.max(160, o.w + dx); if (hd.includes('s')) ch.h = Math.max(120, o.h + dy); if (hd.includes('w')) { ch.w = Math.max(160, o.w - dx); ch.x = o.x + o.w - ch.w; } if (hd.includes('n')) { ch.h = Math.max(120, o.h - dy); ch.y = o.y + o.h - ch.h; } } else { ch.x = Math.max(RH_W, o.x + dx); ch.y = Math.max(HDR_H, o.y + dy); } d.style.left = ch.x + 'px'; d.style.top = ch.y + 'px'; d.style.width = ch.w + 'px'; d.style.height = ch.h + 'px'; if (hd) d.innerHTML = chartSVG(ch); }; const mu = () => { document.removeEventListener('mousemove', mm); document.removeEventListener('mouseup', mu); if (movedC) { histPush(); renderObjects(); emit('cmd', { name: 'chartMove' }); } }; document.addEventListener('mousemove', mm); document.addEventListener('mouseup', mu); });
     d.addEventListener('dblclick', e => { if (e.target.closest('.ctitle')) run('chartTitleDlg'); });
     box.append(d);
   });
@@ -1931,6 +1933,8 @@ function autosum(fn = 'SOMMA') {
     startEdit('enter', `=${fn}(${rng || ''})`); S.edit.dirty = true; if (rng) S.edit.pt = null; drawRefBoxes(); return 'edit';
   }
   // intervallo selezionato: risultati sotto ogni colonna (o a destra)
+  const under = g.r1 === g.r2 && g.c1 !== g.c2 && g.r1 > 0 && [...Array(g.c2 - g.c1 + 1).keys()].every(i => !hasVal(sh, g.c1 + i, g.r1) && isNum(g.c1 + i, g.r1 - 1));
+  if (under) { for (let c = g.c1; c <= g.c2; c++) { let a = g.r1 - 1; while (a >= 0 && isNum(c, a)) a--; setInput(sh, c, g.r1, `=${fn}(${A1(c, a + 1)}:${A1(c, g.r1 - 1)})`); } return 'done'; }
   const rowTotals = g.c1 !== g.c2 && g.r1 === g.r2;
   if (rowTotals) { const c = g.c2 + 1; setInput(sh, c, g.r1, `=${fn}(${A1(g.c1, g.r1)}:${A1(g.c2, g.r1)})`); }
   else for (let c = g.c1; c <= g.c2; c++) { let r2 = g.r2; let r = r2 + 1; if (hasVal(sh, c, r2) && !isNum(c, r2)) continue; setInput(sh, c, hasVal(sh, c, r2) ? r : r2, `=${fn}(${A1(c, g.r1)}:${A1(c, hasVal(sh, c, r2) ? r2 : r2 - 1)})`); }
@@ -2043,7 +2047,7 @@ const CMD = {
   zoom100: { fn() { setZoom(1); }, mut: false }, zoomSel: { fn() { const R = rangeRect(S.sel.g); const w = $('#gridwrap'); setZoom(clamp(Math.min(w.clientWidth / (R.w + RH_W), w.clientHeight / (R.h + HDR_H)), .1, 4)); scrollIntoView(S.sel.g.c1, S.sel.g.r1); }, mut: false },
   /* finestre */
   formatCells: { fn() { dlgFormatCells(); }, mut: false }, colWidthDlg: { fn() { dlgNumber('Larghezza colonne', 'Larghezza colonne:', Math.round((colW(SH(), S.sel.c) - 5) / 7 * 100) / 100, v => run('colWidth', v), 'cwIn'); }, mut: false }, rowHeightDlg: { fn() { dlgNumber('Altezza righe', 'Altezza righe:', Math.round(rowH(SH(), S.sel.r) * .75 * 100) / 100, v => run('rowHeight', v), 'rhIn'); }, mut: false },
-  sortDlg: { fn() { dlgSort(); }, mut: false }, findDlg: { fn(t) { dlgFind(t || 'find'); }, mut: false }, gotoDlg: { fn() { dlgGoto(); }, mut: false },
+  sortDlg: { fn() { dlgSort(); }, mut: false }, findDlg: { fn(t) { dlgFind(t || 'find'); }, mut: false }, pasteSpecialDlg: { fn() { if (!S.clip) return toast('Gli Appunti sono vuoti: prima copia (Ctrl+C) delle celle.'); const opts = [['all', 'Tutto'], ['formulas', 'Formule'], ['values', 'Valori'], ['formats', 'Formati'], ['transpose', 'Trasponi']]; let pick = 'all'; const body = h('div', null, opts.map(([k, lb]) => h('label', { style: 'display:flex;gap:8px;align-items:center;padding:3px 0' }, h('input', { type: 'radio', name: 'psm', value: k, 'data-id': 'ps-' + k, checked: k === 'all' ? true : null, onchange: () => { pick = k; } }), lb))); dialog({ title: 'Incolla speciale', w: 320, body, buttons: [{ lb: 'OK', pri: true, id: 'psOk', fn: () => { setTimeout(() => run('paste', pick), 0); } }, { lb: 'Annulla' }] }); }, mut: false }, gotoDlg: { fn() { dlgGoto(); }, mut: false },
   chartTitleDlg: { fn() { const ch = curChart(); if (!ch) return; dlgText('Titolo del grafico', 'Titolo:', ch.title != null ? ch.title : (chartData(ch).series.length === 1 ? chartData(ch).series[0].name : 'Titolo del grafico'), v => run('chartTitle', v), 'ctIn'); }, mut: false },
   chartDataDlg: { fn() { const ch = curChart(); if (ch) dlgText('Seleziona origine dati', 'Intervallo dati grafico (più intervalli separati da ;):', String(ch.range).split(';').map(absRange).join(';'), v => run('chartData', v), 'cdIn'); }, mut: false },
   pivotDlg: { fn() { dlgPivot(); }, mut: false }, tableDlg: { fn(style) { dlgTable(style); }, mut: false }, sparkDlg: { fn(t) { dlgSpark(t); }, mut: false },
@@ -2450,7 +2454,7 @@ function openBackstage(section = 'home') {
   else if (section === 'saveas') {
     const nm = h('input', { value: WB.title, 'data-id': 'bsName', class: 'bsname' }); const fmt = h('select', { 'data-id': 'bsFmt', class: 'bsname' }, h('option', { value: 'xlsx' }, 'Cartella di lavoro di Excel (*.xlsx)'), h('option', { value: 'csv' }, 'CSV UTF-8 (delimitato da separatore) (*.csv)'));
     nm.addEventListener('keydown', e => e.stopPropagation()); nm.addEventListener('input', () => emit('cmd', { name: 'bsInput' }));
-    main.append(h('h2', { id: 'bsSaveAs' }, 'Salva con nome'), h('div', { class: 'bsfolder', html: `${ic('folder', 'l')}<div><b>Download</b><span>Questo PC › Download</span></div>` }), h('div', { class: 'bssave' }, nm, fmt, h('button', { class: 'pbtn pri', 'data-id': 'bsSaveBtn', onclick: () => { const n = nm.value.trim() || 'Cartel1'; WB.title = n; $('#docname').value = n; fitDocName(); if (fmt.value === 'csv') run('exportCsv', n); else run('exportXlsx', n); closeBackstage(); toast(`File «${n}.${fmt.value}» salvato nella cartella Download.`, 3000); } }, 'Salva')));
+    main.append(h('h2', { id: 'bsSaveAs' }, 'Salva con nome'), h('div', { class: 'bsfolder', html: `${ic('folder', 'l')}<div><b>Download</b><span>Questo PC › Download</span></div>` }), h('div', { class: 'bssave' }, nm, fmt, h('button', { class: 'pbtn pri', 'data-id': 'bsSaveBtn', onclick: () => { const n = nm.value.trim().replace(new RegExp('\\.' + fmt.value + '$', 'i'), '').trim() || 'Cartel1'; WB.title = n; $('#docname').value = n; fitDocName(); if (fmt.value === 'csv') run('exportCsv', n); else run('exportXlsx', n); closeBackstage(); toast(`File «${n}.${fmt.value}» salvato nella cartella Download.`, 3000); } }, 'Salva')));
   }
   else if (section === 'print') {
     const sh = SH(); const pr = sh.print; const or = h('select', { 'data-id': 'prOrient' }, h('option', { value: 'p', selected: pr.orient === 'p' }, 'Orientamento verticale'), h('option', { value: 'l', selected: pr.orient === 'l' }, 'Orientamento orizzontale'));
@@ -2581,8 +2585,8 @@ function fillDrag(e) {
   document.addEventListener('mousemove', mm); document.addEventListener('mouseup', mu);
 }
 /* ---------- tastiera ---------- */
-function keyName(e) { const k = e.key.length === 1 ? e.key.toLowerCase() : e.key; const p = []; if (e.ctrlKey || e.metaKey) p.push('ctrl'); if (e.altKey) p.push('alt'); if (e.shiftKey && e.key.length > 1) p.push('shift'); p.push(k); return p.join('+'); }
-const SHORT = { 'ctrl+g': ['bold'], 'ctrl+i': ['italic'], 'ctrl+s': ['underline'], 'ctrl+b': ['save'], 'ctrl+z': ['undo'], 'ctrl+y': ['redo'], 'ctrl+c': ['copy'], 'ctrl+x': ['cut'], 'ctrl+v': ['paste', 'all'], 'ctrl+1': ['formatCells'], 'alt+=': ['autosum', 'SOMMA'], 'ctrl+shift+l': ['filter'], 'ctrl+L': ['filter'], 'F12': ['saveAs'], 'ctrl+F1': ['tab'], 'shift+F2': ['newNote'], 'ctrl+F3': ['nameManager'], 'shift+F3': ['fnInsert'], 'ctrl+alt+k': ['linkDlg'], 'ctrl+%': ['pct'] };
+function keyName(e) { const k = e.key.length === 1 ? e.key.toLowerCase() : e.key; const p = []; if (e.ctrlKey || e.metaKey) p.push('ctrl'); if (e.altKey) p.push('alt'); if (e.shiftKey && (e.key.length > 1 || /^[a-z]$/i.test(e.key))) p.push('shift'); p.push(k); return p.join('+'); }
+const SHORT = { 'ctrl+g': ['bold'], 'ctrl+i': ['italic'], 'ctrl+s': ['underline'], 'ctrl+b': ['save'], 'ctrl+z': ['undo'], 'ctrl+y': ['redo'], 'ctrl+c': ['copy'], 'ctrl+x': ['cut'], 'ctrl+v': ['paste', 'all'], 'ctrl+1': ['formatCells'], 'alt+=': ['autosum', 'SOMMA'], 'ctrl+shift+l': ['filter'], 'alt+F1': ['chart', 'col'], 'shift+F11': ['addSheet'], 'ctrl+l': ['tableDlg', 'blue'], 'ctrl+t': ['tableDlg', 'blue'], 'ctrl+$': ['nf', 'eur'], 'ctrl+f': ['findDlg', 'find'], 'ctrl+h': ['findDlg', 'replace'], 'F12': ['saveAs'], 'ctrl+F1': ['tab'], 'shift+F2': ['newNote'], 'ctrl+F3': ['nameManager'], 'shift+F3': ['fnInsert'], 'ctrl+alt+k': ['linkDlg'], 'ctrl+alt+v': ['pasteSpecialDlg'], 'ctrl+%': ['pct'] };
 function moveSel(dc, dr, extend, jump) {
   const sh = SH(); let fc = extend ? (S.sel.focus || { c: S.sel.c === S.sel.g.c1 ? S.sel.g.c2 : S.sel.g.c1, r: S.sel.r === S.sel.g.r1 ? S.sel.g.r2 : S.sel.g.r1 }) : { c: S.sel.c, r: S.sel.r };
   if (!extend) { const m = mergeAt(sh, fc.c, fc.r); if (m) { if (dc > 0) fc.c = m.c2; if (dr > 0) fc.r = m.r2; } }
@@ -2619,7 +2623,7 @@ function bindKeys() {
     if (e.ctrlKey && e.key === ' ') { e.preventDefault(); setSel(S.sel.c, 0, S.sel.c, NROWS - 1); return; }
     if (e.shiftKey && e.key === ' ') { e.preventDefault(); setSel(0, S.sel.r, NCOLS - 1, S.sel.r); return; }
     if (e.key === 'Backspace') { e.preventDefault(); startEdit('enter', ''); return; }
-    if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); startEdit('enter', e.key); return; }
+    if (e.key.length === 1 && ((!e.ctrlKey && !e.metaKey && !e.altKey) || (e.getModifierState && e.getModifierState('AltGraph')))) { e.preventDefault(); startEdit('enter', e.key); return; }
   });
 }
 function editKey(e) {
@@ -2689,7 +2693,7 @@ const Q = {
   raw(ref) { const { sh, a } = splitRef(ref); const c = sh && getCell(sh, a); return c ? String(c.v == null ? '' : c.v) : ''; },
   f(ref) { const r = Q.raw(ref); return r[0] === '=' ? r.replace(/\s+/g, '').toUpperCase() : ''; },
   isF: ref => Q.raw(ref)[0] === '=',
-  has: (ref, frag) => Q.f(ref).includes(frag.replace(/\s+/g, '').toUpperCase()),
+  has: (ref, frag) => { const f = Q.f(ref), x = frag.replace(/\s+/g, '').toUpperCase(); return f.includes(x) || (!x.includes('$') && f.replace(/\$/g, '').includes(x)); },
   st(ref) { const { sh, a } = splitRef(ref); const c = sh && getCell(sh, a); return (c && c.s) || {}; },
   all(range, pred) { const { sh, a } = splitRef(range); const g = parseRange(a); let ok = true; eachCell(g, (c, r) => { if (!pred(sh.name + '!' + A1(c, r), A1(c, r))) ok = false; }); return ok; },
   sel: () => selStr(), selIs: r => selStr() === r, active: () => A1(S.sel.c, S.sel.r),
@@ -2793,13 +2797,15 @@ function spotlight() {
 }
 
 /* ---------- eventi dal programma ---------- */
+const FMT_CMDS = ['bold', 'italic', 'underline', 'fontName', 'fontSize', 'grow', 'shrink', 'fontColor', 'fill', 'border', 'halign', 'valign', 'wrap', 'merge', 'nf', 'acc', 'pct', 'comma', 'decInc', 'decDec', 'cellStyle', 'fmtApply', 'painter', 'painterApply', 'autofitCols', 'colWidth', 'autofitRows', 'rowHeight'];
+const CMD_EQ = [['fill', 'paste'], ['fontSize', 'grow', 'shrink'], ['nf', 'acc', 'pct', 'comma', 'decInc', 'decDec', 'fmtApply'], ['sortAsc', 'sortDesc', 'sortMulti'], ['autofitCols', 'colWidth'], ['autofitRows', 'rowHeight'], ['tableFormat', 'tableDlg'], ['chart', 'chartType'], ['insRows', 'insCells'], ['delCols', 'delCells'], ['delRows', 'delCells']];
 on('cmd', ev => {
   if (!LESSONS[C.li] || (C.finished && ev.name !== 'newDoc')) { renderLive(); return; }
   C.act = Date.now(); const L = LESSONS[C.li], s = curStep() || {};
-  if (!['popup', 'tab', 'dialog', 'dialogClose', 'zoom'].includes(ev.name)) C.last = CMDLABEL[ev.name] || ev.name;
+  const lbl = ev.name === 'fill' && /^(#|none)/.test(String(ev.arg || '')) ? 'Colore riempimento' : (CMDLABEL[ev.name] || ev.name); if (!['popup', 'tab', 'dialog', 'dialogClose', 'zoom'].includes(ev.name)) C.last = lbl;
   setTimeout(() => {
-    const mut = ev.pre && ev.pre.wb != null && ev.pre.wb !== snapWB(); const ok = new Set([...(s.cmds || []), ...(L.cmds || [])]);
-    if (mut && !ALWAYS.has(ev.name) && !ok.has(ev.name) && !C.err && !L.free && !C.demo) { const need = (s.cmds || []).map(c => CMDLABEL[c] || c).join(' / '); say('warn', 'Comando non necessario', `Hai usato <b>${esc(CMDLABEL[ev.name] || ev.name)}</b>${need ? `, ma in questo passaggio serve <b>${esc(need)}</b>` : ', che in questo passaggio non serve'}. Se non era voluto premi <kbd>Ctrl</kbd>+<kbd>Z</kbd>.`, [{ lb: 'Annulla', fn: () => run('undo') }]); C.stepErr[C.idx] = (C.stepErr[C.idx] || 0) + 1; C.errs++; }
+    const mut = ev.pre && ev.pre.wb != null && ev.pre.wb !== snapWB(); const ok = new Set([...(s.cmds || []), ...(L.cmds || [])]); if (L.fmt) FMT_CMDS.forEach(x => ok.add(x)); if ((L.cells || []).length) { ok.add('paste'); if (!/^(#|none)/.test(String(ev.arg || ''))) ok.add('fill'); } CMD_EQ.forEach(gr => { if (gr.some(x => ok.has(x))) gr.forEach(x => ok.add(x)); });
+    if (mut && !ALWAYS.has(ev.name) && !ok.has(ev.name) && !C.err && !L.free && !C.demo) { const need = (s.cmds || []).map(c => CMDLABEL[c] || c).join(' / '); say('warn', 'Comando non necessario', `Hai usato <b>${esc(lbl)}</b>${need ? `, ma in questo passaggio serve <b>${esc(need)}</b>` : ', che in questo passaggio non serve'}. Se non era voluto premi <kbd>Ctrl</kbd>+<kbd>Z</kbd>.`, [{ lb: 'Annulla', fn: () => run('undo') }]); C.stepErr[C.idx] = (C.stepErr[C.idx] || 0) + 1; C.errs++; }
     if (s.onCmd) { const m = s.onCmd(ev, Q); if (m) say('warn', 'Attenzione', m, []); }
     evalNow('cmd'); spotlight(); renderLive();
   }, 90);
@@ -2958,14 +2964,14 @@ L(0, 'Celle, righe e colonne', 'Un foglio Excel è una griglia: le <b>colonne</b
 
 L(0, 'Inserire testo e numeri', 'Per scrivere in una cella basta selezionarla e digitare; <kbd>Invio</kbd> conferma e scende alla cella sotto, <kbd>Tab</kbd> conferma e va a destra. I <b>testi</b> si allineano a sinistra, i <b>numeri</b> a destra. In Excel italiano i decimali si scrivono con la <b>virgola</b>: 2,50 e non 2.50.',
   { title: 'Spese della settimana', data: grid([['Giorno', 'Spesa', 'Importo'], ['Lunedì', 'Supermercato', '38,5'], ['Martedì', 'Farmacia', '12,9'], ['Mercoledì', 'Benzina', '45']]), st: { 'A1:C1': HEAD }, colW: { A: 100, B: 120 } }, [
-  { text: 'In <b>A5</b> scrivi <b>Giovedì</b> e premi <kbd>Tab</kbd> per passare a destra.', path: ['cell:A5'], keys: '⌨️ Scrivo: <span>Giovedì</span> e premo <kbd>Tab</kbd>', done: Q => Q.raw('A5').trim() === 'Giovedì', hints: ['Clicca su A5, scrivi Giovedì (con l\'accento: ì) e premi Tab.'], solve: Q => { Q.set('A5', 'Giovedì'); Q.select('B5'); }, ok: 'Testo inserito: si allinea a sinistra.' },
+  { text: 'In <b>A5</b> scrivi <b>Giovedì</b> e premi <kbd>Tab</kbd> per passare a destra.', path: ['cell:A5'], keys: '⌨️ Scrivo: <span>Giovedì</span> e premo <kbd>Tab</kbd>', done: Q => Q.raw('A5').trim().toLowerCase() === 'giovedì', hints: ['Clicca su A5, scrivi Giovedì (con l\'accento: ì) e premi Tab.'], solve: Q => { Q.set('A5', 'Giovedì'); Q.select('B5'); }, ok: 'Testo inserito: si allinea a sinistra.' },
   { text: 'In <b>B5</b> scrivi <b>Panetteria</b> e premi <kbd>Tab</kbd>.', path: ['cell:B5'], done: Q => Q.raw('B5').trim().toLowerCase() === 'panetteria', hints: ['Il cursore dovrebbe già essere su B5.'], solve: Q => { Q.set('B5', 'Panetteria'); Q.select('C5'); }, ok: 'Bene.' },
   { text: 'In <b>C5</b> scrivi l\'importo <b>6,40</b> (con la virgola) e premi <kbd>Invio</kbd>.', path: ['cell:C5'], done: Q => Q.n('C5') === 6.4, wrong: Q => { const r = Q.raw('C5'); if (r && typeof Q.v('C5') === 'string') return { title: 'Excel non lo considera un numero', msg: `«${esc(r)}» è stato salvato come testo (vedi: è allineato a sinistra). In Excel italiano scrivi i decimali con la <b>virgola</b>: <b>6,40</b>.` }; return null; }, hints: ['Usa la virgola per i decimali: 6,40.', 'Un numero corretto si allinea a destra.'], solve: Q => Q.set('C5', '6,40'), ok: 'Il numero si allinea a destra: Excel lo riconosce come valore.' }
 ], { cells: ['A5:C5'] });
 
 L(0, 'Modificare, cancellare e annullare', 'Per <b>sostituire</b> il contenuto di una cella scrivi direttamente sopra. Per <b>correggerlo</b> senza riscriverlo premi <kbd>F2</kbd> o fai doppio clic. <kbd>Canc</kbd> svuota la cella. E se sbagli: <kbd>Ctrl</kbd>+<kbd>Z</kbd> annulla, <kbd>Ctrl</kbd>+<kbd>Y</kbd> ripete.',
   { title: 'Rubrica', data: grid([['Nome', 'Telefono', 'Città'], ['Anna Rossi', '333 1234567', 'Milano'], ['Luca Bianchi', '347 7654321', 'Tornio'], ['Riga di prova', 'DA CANCELLARE', '']]), st: { 'A1:C1': HEAD }, colW: { A: 120, B: 110, C: 90 } }, [
-  { text: 'La città di Luca è sbagliata: correggi <b>C3</b> in <b>Torino</b> (scrivi sopra oppure usa <kbd>F2</kbd>).', path: ['cell:C3'], done: Q => Q.raw('C3').trim() === 'Torino', hints: ['Seleziona C3 e scrivi Torino, poi Invio: il vecchio testo viene sostituito.', 'Con F2 entri in modifica e puoi correggere solo le lettere sbagliate.'], solve: Q => Q.set('C3', 'Torino'), ok: 'Corretto.' },
+  { text: 'La città di Luca è sbagliata: correggi <b>C3</b> in <b>Torino</b> (scrivi sopra oppure usa <kbd>F2</kbd>).', path: ['cell:C3'], done: Q => Q.raw('C3').trim().toLowerCase() === 'torino', hints: ['Seleziona C3 e scrivi Torino, poi Invio: il vecchio testo viene sostituito.', 'Con F2 entri in modifica e puoi correggere solo le lettere sbagliate.'], solve: Q => Q.set('C3', 'Torino'), ok: 'Corretto.' },
   { text: 'Seleziona <b>A4:B4</b> e premi <kbd>Canc</kbd> per svuotare la riga di prova.', path: ['cell:A4'], done: Q => !Q.raw('A4') && !Q.raw('B4'), hints: ['Trascina da A4 a B4, poi premi il tasto Canc (Delete).'], solve: Q => { Q.select('A4:B4'); run('clear', 'contents'); }, ok: 'Celle svuotate.' },
   { text: 'Ops! Premi <kbd>Ctrl</kbd>+<kbd>Z</kbd> (o la freccia Annulla in alto) per far ricomparire la riga.', path: ['undoBtn'], done: Q => Q.raw('A4') === 'Riga di prova' && C.stepDone[1], hints: ['La freccia curva verso sinistra è nella barra del titolo, accanto al dischetto.'], solve: Q => run('undo'), ok: 'Annulla ti salva sempre.' },
   { text: 'Ora cancella di nuovo <b>A4:B4</b>: questa volta va bene così.', done: Q => !Q.raw('A4') && !Q.raw('B4') && C.stepDone[2], hints: ['Seleziona A4:B4 e premi Canc.'], solve: Q => { Q.select('A4:B4'); run('clear', 'contents'); }, ok: 'Rubrica pulita.' }
@@ -3116,7 +3122,7 @@ L(4, 'Salva con nome (.xlsx)', '<b>Salva con nome</b> (<kbd>F12</kbd> o File ›
   { title: 'Cartel1', data: grid([['Voce', 'Importo'], ['Affitto', '650'], ['Spesa', '420'], ['Bollette', '180'], ['Totale', '=SOMMA(B2:B4)']]), st: { 'A1:B1': HEAD, 'B2:B5': { nf: 'eur', dec: 2 }, 'A5:B5': { b: 1 } } }, [
   { text: 'Fai clic sulla scheda <b>File</b>.', path: ['tab:file'], done: Q => $('#backstage').classList.contains('show') || !!C.flags.savedAs, hints: ['È la prima scheda a sinistra, prima di Home.'], solve: Q => openBackstage('home'), ok: 'Sei nel Backstage.' },
   { text: 'Scegli <b>Salva con nome</b> nel menu a sinistra.', path: ['tab:file', 'bs-saveas'], done: Q => !!$('#bsSaveAs') || !!C.flags.savedAs, hints: ['Nella colonna verde a sinistra.'], solve: Q => openBackstage('saveas'), ok: 'Ecco la schermata Salva con nome.' },
-  { text: `Scrivi il nome <b>${NOME_FILE}</b>, lascia il tipo <b>Cartella di lavoro di Excel (*.xlsx)</b> e premi <b>Salva</b>.`, path: ['bsName', 'bsSaveBtn'], done: Q => !!C.flags.savedAs && C.flags.savedAs.name === NOME_FILE && C.flags.savedAs.fmt === 'xlsx', wrong: Q => { const f = C.flags.savedAs; if (f && f.name !== NOME_FILE) return { title: 'Nome del file sbagliato', msg: `Hai salvato «${esc(f.name)}»: deve chiamarsi «<b>${NOME_FILE}</b>». Ripeti File › Salva con nome.` }; if (f && f.fmt !== 'xlsx') return { title: 'Formato sbagliato', msg: 'Serve il formato <b>Cartella di lavoro di Excel (*.xlsx)</b>.' }; return null; }, hints: ['Clicca nella casella del nome, cancella «Cartel1» e scrivi Budget familiare.', 'Poi il pulsante verde Salva.'], solve: Q => { if (!$('[data-id=bsName]')) openBackstage('saveas'); $('[data-id=bsName]').value = NOME_FILE; $('[data-id=bsFmt]').value = 'xlsx'; $('[data-id=bsSaveBtn]').click(); }, ok: 'File .xlsx salvato in Download: lo puoi aprire con Excel.' }
+  { text: `Scrivi il nome <b>${NOME_FILE}</b>, lascia il tipo <b>Cartella di lavoro di Excel (*.xlsx)</b> e premi <b>Salva</b>.`, path: ['bsName', 'bsSaveBtn'], done: Q => !!C.flags.savedAs && C.flags.savedAs.name.toLowerCase() === NOME_FILE.toLowerCase() && C.flags.savedAs.fmt === 'xlsx', wrong: Q => { const f = C.flags.savedAs; if (f && f.name.toLowerCase() !== NOME_FILE.toLowerCase()) return { title: 'Nome del file sbagliato', msg: `Hai salvato «${esc(f.name)}»: deve chiamarsi «<b>${NOME_FILE}</b>». Ripeti File › Salva con nome.` }; if (f && f.fmt !== 'xlsx') return { title: 'Formato sbagliato', msg: 'Serve il formato <b>Cartella di lavoro di Excel (*.xlsx)</b>.' }; return null; }, hints: ['Clicca nella casella del nome, cancella «Cartel1» e scrivi Budget familiare.', 'Poi il pulsante verde Salva.'], solve: Q => { if (!$('[data-id=bsName]')) openBackstage('saveas'); $('[data-id=bsName]').value = NOME_FILE; $('[data-id=bsFmt]').value = 'xlsx'; $('[data-id=bsSaveBtn]').click(); }, ok: 'File .xlsx salvato in Download: lo puoi aprire con Excel.' }
 ], { cells: [], free: true });
 
 /* ======================= MODULO 6 · PROGETTO FINALE ======================= */
